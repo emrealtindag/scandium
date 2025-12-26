@@ -33,7 +33,7 @@ opencv-python = "^4.9.0"
 pymavlink = "^2.4.41"
 pydantic = "^2.5.0"
 pydantic-settings = "^2.1.0"
-typer = { version = "^0.9.0", extras = ["all"] }
+typer = { version = "^0.21.0", extras = ["all"] }
 structlog = "^24.1.0"
 pyyaml = "^6.0.1"
 scipy = "^1.12.0"
