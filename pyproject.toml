@@ -28,7 +28,7 @@ scandium = "scandium.cli:app"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-numpy = "^1.26.0"
+numpy = "^2.4.0"
 opencv-python = "^4.9.0"
 pymavlink = "^2.4.41"
 pydantic = "^2.5.0"
