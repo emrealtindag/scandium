@@ -1,13 +1,12 @@
 # Scandium
 
-[![CI](https://github.com/scandium-oss/scandium/actions/workflows/ci.yml/badge.svg)](https://github.com/scandium-oss/scandium/actions/workflows/ci.yml)
-[![Security](https://github.com/scandium-oss/scandium/actions/workflows/security.yml/badge.svg)](https://github.com/scandium-oss/scandium/actions/workflows/security.yml)
+[![CI](https://github.com/emrealtindag/scandium/actions/workflows/ci.yml/badge.svg)](https://github.com/emrealtindag/scandium/actions/workflows/ci.yml)
+[![Security](https://github.com/emrealtindag/scandium/actions/workflows/security.yml/badge.svg)](https://github.com/emrealtindag/scandium/actions/workflows/security.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
-[![Documentation](https://img.shields.io/badge/docs-mkdocs-blue.svg)](https://scandium-oss.github.io/scandium)
 
 ## Overview
 
@@ -48,6 +47,33 @@ Computer vision-based landing zone safety assessment system. The analysis incorp
 ### Finite State Machine Control
 Deterministic state machine implementation managing the complete landing sequence: INIT, IDLE, SEARCH, ACQUIRE, ALIGN, DESCEND, TOUCHDOWN, ABORT, and FAILSAFE states. State transitions are governed by configurable thresholds and safety constraints.
 
+```mermaid
+stateDiagram-v2
+    [*] --> INIT
+    INIT --> IDLE: System Ready
+    IDLE --> SEARCH: Arm Command
+    IDLE --> ACQUIRE: Target Visible
+    SEARCH --> ACQUIRE: Target Detected
+    ACQUIRE --> ALIGN: Filter Stabilized
+    ACQUIRE --> SEARCH: Target Lost
+    ALIGN --> DESCEND: Lateral Error < Threshold
+    ALIGN --> SEARCH: Target Lost
+    DESCEND --> TOUCHDOWN: Altitude < Threshold
+    DESCEND --> SEARCH: Target Lost
+    TOUCHDOWN --> [*]
+    
+    ACQUIRE --> ABORT: Low Landability
+    ALIGN --> ABORT: Low Landability
+    DESCEND --> ABORT: Low Landability
+    DESCEND --> ABORT: Human Detected
+    
+    INIT --> FAILSAFE: Link Lost
+    SEARCH --> FAILSAFE: Link Lost
+    ACQUIRE --> FAILSAFE: Link Lost
+    ALIGN --> FAILSAFE: Link Lost
+    DESCEND --> FAILSAFE: Link Lost
+```
+
 ### Simulation Integration
 Comprehensive simulation environment support including Microsoft AirSim and Software-In-The-Loop (SITL) configurations for both ArduPilot and PX4. Scenario-based testing framework enables systematic validation across diverse environmental conditions.
 
@@ -87,7 +113,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 ```bash
 # Clone the repository
-git clone https://github.com/scandium-oss/scandium.git
+git clone https://github.com/emrealtindag/scandium.git
 cd scandium
 
 # Install dependencies via Poetry
@@ -156,36 +182,32 @@ poetry run scandium run --config configs/px4_sitl.yaml
 
 The Scandium system architecture comprises four primary layers: Perception, Control, MAVLink I/O, and Simulation/Tooling.
 
-```
-+-----------------------------------------------------------------------+
-|                         SCANDIUM SYSTEM                                |
-+-----------------------------------------------------------------------+
-|                                                                       |
-|  +-------------------+    +-------------------+    +-----------------+ |
-|  |   Video Ingest    |    |    Fiducial       |    |     Pose        | |
-|  |   (Camera Source) |--->|    Detector       |--->|   Estimator     | |
-|  +-------------------+    | (ArUco/AprilTag)  |    | (solvePnP/EKF)  | |
-|                           +-------------------+    +--------+--------+ |
-|                                                             |         |
-|  +-------------------+    +-------------------+             v         |
-|  |   Landability     |    |                   |    +-----------------+ |
-|  |   Estimator       |--->|   Landing FSM     |<---|     Frame       | |
-|  | (Heuristic/ML)    |    |                   |    |   Transforms    | |
-|  +-------------------+    +--------+----------+    +-----------------+ |
-|                                    |                                   |
-|                                    v                                   |
-|                      +---------------------------+                     |
-|                      |    LANDING_TARGET         |                     |
-|                      |    Publisher (MAVLink)    |                     |
-|                      +-------------+-------------+                     |
-|                                    |                                   |
-+------------------------------------+-----------------------------------+
-                                     |
-                                     v
-                          +-------------------+
-                          |     Autopilot     |
-                          |  (PX4/ArduPilot)  |
-                          +-------------------+
+```mermaid
+flowchart TB
+    subgraph SCANDIUM["SCANDIUM SYSTEM"]
+        subgraph Perception["Perception Layer"]
+            VI["Video Ingest\n(Camera Source)"] --> FD["Fiducial Detector\n(ArUco/AprilTag)"]
+            FD --> PE["Pose Estimator\n(solvePnP/EKF)"]
+            PE --> FT["Frame Transforms"]
+        end
+        
+        subgraph Control["Control Layer"]
+            LE["Landability Estimator\n(Heuristic/ML)"] --> FSM["Landing FSM"]
+            FT --> FSM
+        end
+        
+        subgraph MAVLink["MAVLink I/O"]
+            FSM --> LT["LANDING_TARGET\nPublisher"]
+        end
+    end
+    
+    LT --> AP["Autopilot\n(PX4/ArduPilot)"]
+    
+    style SCANDIUM fill:#1a1a2e,stroke:#16213e,color:#fff
+    style Perception fill:#0f3460,stroke:#16213e,color:#fff
+    style Control fill:#533483,stroke:#16213e,color:#fff
+    style MAVLink fill:#e94560,stroke:#16213e,color:#fff
+    style AP fill:#0f3460,stroke:#16213e,color:#fff
 ```
 
 ### Layer Descriptions
