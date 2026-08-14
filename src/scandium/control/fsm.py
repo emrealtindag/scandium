@@ -70,6 +70,11 @@ class SystemOutputs:
         publish_landing_target: Whether to publish LANDING_TARGET.
         abort_reason: Reason for abort (if applicable).
         confidence_gain: Gain scaling factor based on confidence.
+        state_changed: Whether state changed this tick.
+        abort_command: Suggest the higher-level system to run an abort (go-around).
+        command: Optional textual command (e.g. "GO_AROUND").
+        failsafe_active: Whether an active failsafe is engaged.
+        mission_complete: Whether the landing task completed successfully.
     """
 
     state: LandingState
@@ -77,6 +82,10 @@ class SystemOutputs:
     abort_reason: Optional[str] = None
     confidence_gain: float = 1.0
     state_changed: bool = False
+    abort_command: bool = False
+    command: Optional[str] = None
+    failsafe_active: bool = False
+    mission_complete: bool = False
 
 
 class LandingFSM:
@@ -125,6 +134,12 @@ class LandingFSM:
         self._consecutive_detections = 0
         self._last_target_time: Optional[float] = None
         self._abort_reason: Optional[str] = None
+
+        # Action flags
+        self._abort_command: bool = False
+        self._abort_cmd_text: Optional[str] = None
+        self._failsafe_active: bool = False
+        self._mission_complete: bool = False
 
     def tick(self, inputs: SystemInputs) -> SystemOutputs:
         """
@@ -201,12 +216,26 @@ class LandingFSM:
             LandingState.DESCEND,
         )
 
+        # Reset action flags unless state requires them
+        abort_cmd = False
+        cmd_text = None
+        if self._state == LandingState.ABORT:
+            abort_cmd = True
+            cmd_text = self._abort_cmd_text or "GO_AROUND"
+
+        failsafe = self._state == LandingState.FAILSAFE or self._failsafe_active
+        mission_done = self._mission_complete
+
         return SystemOutputs(
             state=self._state,
             publish_landing_target=publish,
             abort_reason=self._abort_reason,
             confidence_gain=self._compute_gain(),
             state_changed=self._state != self._prev_state,
+            abort_command=abort_cmd,
+            command=cmd_text,
+            failsafe_active=failsafe,
+            mission_complete=mission_done,
         )
 
     def _compute_gain(self) -> float:
@@ -291,17 +320,21 @@ class LandingFSM:
     def _handle_touchdown(self, inputs: SystemInputs) -> None:
         """Handle TOUCHDOWN state."""
         # Terminal state - landing complete
-        pass
+        logger.info("fsm_touchdown", msg="Touchdown detected; marking mission complete")
+        self._mission_complete = True
 
     def _handle_abort(self, inputs: SystemInputs) -> None:
         """Handle ABORT state."""
         # Terminal state until reset
-        pass
+        logger.warning("fsm_abort", reason=self._abort_reason or "unknown")
+        # Suggest go-around (fixed-wing appropriate behavior)
+        self._abort_command = True
+        self._abort_cmd_text = "GO_AROUND"
 
     def _handle_failsafe(self, inputs: SystemInputs) -> None:
         """Handle FAILSAFE state."""
-        # Terminal state - requires manual intervention
-        pass
+        logger.critical("fsm_failsafe", reason=self._abort_reason or "failsafe_triggered")
+        self._failsafe_active = True
 
     def _handle_target_lost(self, inputs: SystemInputs) -> None:
         """Handle temporary target loss."""
@@ -309,7 +342,9 @@ class LandingFSM:
             self._last_target_time = inputs.timestamp
 
         if inputs.timestamp - self._last_target_time > self._target_lost_timeout_s:
-            self._transition_to(LandingState.SEARCH)
+            # For fixed-wing, losing target for longer time should trigger abort/go-around
+            self._transition_to(LandingState.ABORT)
+            self._abort_reason = "target_lost_timeout"
             self._last_target_time = None
 
     @property
@@ -324,3 +359,7 @@ class LandingFSM:
         self._consecutive_detections = 0
         self._last_target_time = None
         self._abort_reason = None
+        self._abort_command = False
+        self._abort_cmd_text = None
+        self._failsafe_active = False
+        self._mission_complete = False
